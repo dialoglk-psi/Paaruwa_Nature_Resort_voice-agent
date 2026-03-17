@@ -1,12 +1,15 @@
 import asyncio
 import logging
 import os
+import secrets
 import wave
 from typing import Optional
 
+from agentmail import AgentMail
+from agentmail.inboxes.types import CreateInboxRequest
 from dotenv import load_dotenv
 from livekit import rtc
-from livekit.agents import JobContext, WorkerOptions, cli, AutoSubscribe
+from livekit.agents import AutoSubscribe, JobContext, RunContext, WorkerOptions, cli, function_tool
 from livekit.agents.voice import Agent, AgentSession
 from livekit.plugins import silero, google
 
@@ -17,6 +20,65 @@ logger.setLevel(logging.INFO)
 
 GCP_PROJECT = os.getenv("GCP_PROJECT")
 GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1")  # default to us-central1
+
+def _get_env(name: str) -> Optional[str]:
+    val = os.getenv(name)
+    if val is None:
+        return None
+    val = val.strip()
+    return val or None
+
+
+_AGENTMAIL_INBOX_ID_CACHE: Optional[str] = None
+
+
+def _get_or_create_agentmail_inbox_id(
+    *,
+    client: AgentMail,
+    username: str,
+) -> str:
+    """
+    Return a reusable AgentMail inbox_id.
+
+    Preference order:
+    1) AGENTMAIL_INBOX_ID env var (explicit pin)
+    2) in-process cache (avoid creating multiple inboxes per job/session)
+    3) list existing inboxes and reuse a matching one
+    4) create a new inbox (idempotent via client_id)
+    """
+    global _AGENTMAIL_INBOX_ID_CACHE
+
+    pinned = _get_env("AGENTMAIL_INBOX_ID")
+    if pinned:
+        return pinned
+
+    if _AGENTMAIL_INBOX_ID_CACHE:
+        return _AGENTMAIL_INBOX_ID_CACHE
+
+    # Try reusing an existing inbox first (prevents hitting inbox limits).
+    try:
+        res = client.inboxes.list(limit=50)
+        inboxes = getattr(res, "inboxes", None) or getattr(res, "data", None) or []
+        for ib in inboxes:
+            if getattr(ib, "username", None) == username:
+                _AGENTMAIL_INBOX_ID_CACHE = ib.inbox_id
+                return ib.inbox_id
+        if inboxes:
+            # If username isn't available on the plan/SDK, reuse the first inbox.
+            _AGENTMAIL_INBOX_ID_CACHE = inboxes[0].inbox_id
+            return inboxes[0].inbox_id
+    except Exception:
+        # If listing fails, we'll try to create.
+        pass
+
+    inbox = client.inboxes.create(
+        request=CreateInboxRequest(
+            username=username,
+            client_id=f"{username}-inbox",
+        )
+    )
+    _AGENTMAIL_INBOX_ID_CACHE = inbox.inbox_id
+    return inbox.inbox_id
 
 instructions_sinhala = """You are an AI assistant helping users manage their National Fuel Pass quota. This system now uses QR codes, so you can assist them with that. Please communicate exclusively in Sinhala. You should know everything about how the National Fuel Pass was built and functions.
 
@@ -96,6 +158,13 @@ Chassis number එක ඔබගේ
 සංචාරක හා වාණිජ ප්‍රවාහන වැනි වැඩි ඉන්ධන අවශ්‍ය කර්මාන්තවල අවශ්‍යතා රජය විසින් සමාලෝචනය කරනු ඇත.
 ඒ අනුව සුදුසු සහාය හෝ වෙනස්කම් හඳුන්වා දිය හැක.
 
+TOOL USE POLICY (IMPORTANT):
+- You MUST answer strictly using ONLY the KB above.
+- If the caller asks a Fuel Pass–related question that is NOT answered by the KB (or you are not 100% sure), you MUST:
+  1) Call the tool `agentmail` with a short Sinhala summary of the question (1-2 sentences).
+  2) Then reply to the caller with EXACTLY this Sinhala sentence (no extra text): "ඔබගේ ප්‍රශ්නයට පිළිතුරු දීමට දැනට තොරතුරු නොමැති බැවින්, මම ඔබ වෙනුවෙන් ටිකට් එකක් ඉදිරිපත් කර ඇත. අපගේ කණ්ඩායම ඉක්මනින් ඔබට නැවත සම්බන්ධ වනු ඇත."
+- Do NOT use the tool for non–Fuel Pass topics.
+
 """
 
 instructions_tamil = """You are an AI assistant helping users manage their National Fuel Pass quota. This system now uses QR codes, so you can assist them with that. Please communicate exclusively in Tamil. You should know everything about how the National Fuel Pass was built and functions.
@@ -169,6 +238,13 @@ Fuel Pass தொடர்பான உதவிக்கு தற்போத�
 அதன்படி தேவையான ஆதரவு அல்லது மாற்றங்கள் அறிமுகப்படுத்தப்படலாம்.
 
 
+TOOL USE POLICY (IMPORTANT):
+- You MUST answer strictly using ONLY the KB above.
+- If the caller asks a Fuel Pass–related question that is NOT answered by the KB (or you are not 100% sure), you MUST:
+  1) Call the tool `agentmail` with a short Tamil summary of the question (1-2 sentences).
+  2) Then reply to the caller with EXACTLY this Tamil sentence (no extra text): "உங்கள் கேள்விக்கு பதிலளிக்க தற்போது தேவையான தகவல்கள் இல்லை. நான் உங்களுக்காக ஒரு டிக்கெட் பதிவு செய்துள்ளேன். எங்கள் குழு விரைவில் உங்களை தொடர்பு கொள்ளும்."
+- Do NOT use the tool for non–Fuel Pass topics.
+
 """
 
 
@@ -181,6 +257,69 @@ class FuelPassAgent(Agent):
 
         super().__init__(instructions=instructions)
         self.language = language
+
+    @function_tool(name="agentmail")
+    async def agentmail(
+        self,
+        context: RunContext,
+        question_summary: str,
+        caller_phone: Optional[str] = None,
+    ) -> dict:
+        """Create a complaint ticket by emailing the support team.
+
+        Subject must be "complaint ####" (unique 4 digits). Body must include caller phone number and question summary.
+        """
+        api_key = _get_env("AGENTMAIL_API_KEY")
+        username = _get_env("AGENTMAIL_USERNAME")
+        to_email = _get_env("AGENTMAIL_TO_EMAIL")
+
+        missing = [
+            name
+            for name, val in (
+                ("AGENTMAIL_API_KEY", api_key),
+                ("AGENTMAIL_USERNAME", username),
+                ("AGENTMAIL_TO_EMAIL", to_email),
+            )
+            if not val
+        ]
+        if missing:
+            logger.error(
+                "AgentMail env vars missing: %s",
+                ", ".join(missing),
+            )
+            return {"ok": False, "error": "agentmail_not_configured", "missing": missing}
+
+        inferred_phone = None
+        try:
+            userdata = getattr(context, "userdata", None)
+            if isinstance(userdata, dict):
+                inferred_phone = userdata.get("caller_phone")
+        except Exception:
+            inferred_phone = None
+
+        phone = caller_phone or inferred_phone or "unknown"
+        ticket_num = secrets.randbelow(10000)
+
+        subject = f"complaint {ticket_num:04d}"
+        body = f"Caller phone: {phone}\n\nQuestion summary:\n{question_summary}\n"
+
+        try:
+            client = AgentMail(api_key=api_key)
+
+            inbox_id = _get_or_create_agentmail_inbox_id(client=client, username=username)
+
+            client.inboxes.messages.send(
+                inbox_id,
+                to=to_email,
+                subject=subject,
+                text=body,
+            )
+
+            logger.info(f"Sent complaint email via AgentMail: {subject}")
+            return {"ok": True, "ticket": f"{ticket_num:04d}"}
+        except Exception as e:
+            logger.exception(f"Failed to send AgentMail email: {e}")
+            return {"ok": False, "error": str(e)}
 
     async def on_enter(self) -> None:
         logger.info(f"FuelPassAgent ({self.language}) activated")
@@ -244,6 +383,30 @@ async def entrypoint(ctx: JobContext) -> None:
 
     active_session: Optional[AgentSession] = None
 
+    def _infer_caller_phone() -> Optional[str]:
+        # Best-effort: SIP gateways often store caller ID in participant identity or attributes.
+        try:
+            for p in ctx.room.remote_participants.values():
+                attrs = getattr(p, "attributes", None) or {}
+                for key in (
+                    "sip.phoneNumber",
+                    "sip.phone_number",
+                    "sip.from",
+                    "sip.caller_id",
+                    "phone",
+                    "phone_number",
+                ):
+                    val = attrs.get(key)
+                    if isinstance(val, str) and val.strip():
+                        return val.strip()
+
+                ident = getattr(p, "identity", None)
+                if isinstance(ident, str) and ident.strip():
+                    return ident.strip()
+        except Exception:
+            return None
+        return None
+
     async def start_agent_for_language(language: str):
         nonlocal active_session
         logger.info(f"Starting {language} agent...")
@@ -260,8 +423,9 @@ async def entrypoint(ctx: JobContext) -> None:
             location=GCP_LOCATION,
         )
 
+        caller_phone = _infer_caller_phone()
         active_session = AgentSession(
-            userdata=None,
+            userdata={"caller_phone": caller_phone} if caller_phone else {},
             llm=llm,
             vad=silero.VAD.load(),
             max_tool_steps=3

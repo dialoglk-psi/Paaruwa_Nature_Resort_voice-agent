@@ -12,6 +12,7 @@ dependencies = [
     "livekit-agents~=1.4.5",
     "livekit-plugins-silero~=0.2",
     "livekit-plugins-google>=0.1",
+    "agentmail",
     "python-dotenv",
     "av"
 ]

@@ -20,13 +20,14 @@ RUN pip install --upgrade pip uv
 
 # Copy project specification files
 COPY pyproject.toml .
-
-# Install dependencies using uv
-RUN uv pip install --system -r pyproject.toml
+COPY uv.lock .
 
 # Copy the rest of the application payload
 COPY src/ ./src/
 COPY gcp-credentials.json ./gcp-credentials.json
+
+# Install dependencies using uv (from pyproject)
+RUN uv pip install --system .
 
 # Provide an entrypoint to run the LiveKit agent
 ENTRYPOINT ["python", "src/agent.py", "start"]
