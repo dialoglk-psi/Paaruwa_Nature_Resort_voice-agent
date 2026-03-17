@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fuel-pass-agent
+spec:
+  selector:
+    matchLabels:
+      app: fuel-pass-agent
+  template:
+    metadata:
+      labels:
+        app: fuel-pass-agent
+    spec:
+      containers:
+      - name: agent
+        # IMPORTANT: Replace YOUR_PROJECT_ID here!
+        image: asia-southeast1-docker.pkg.dev/ict-gaistudio-prod-01/ai-voice-agent-repo/fuel-pass-agent:v2
+        envFrom:
+        - secretRef:
+            name: fuel-pass-agent-secrets
+        resources:
+          requests:
+            cpu: "4"     
+            memory: "8Gi" 
+            ephemeral-storage: "4Gi" 
+      # Give active calls up to 15 minutes to finish before shutting down
+      terminationGracePeriodSeconds: 900 
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: fuel-pass-agent-scaler
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: fuel-pass-agent
+  minReplicas: 1
+  maxReplicas: 2
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50 # Spin up a new pod early before the first one fills up!
