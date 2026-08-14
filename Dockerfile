@@ -24,7 +24,8 @@ COPY uv.lock .
 
 # Copy the rest of the application payload
 COPY src/ ./src/
-COPY gcp-credentials.json ./gcp-credentials.json
+# gcp-credentials.json is not baked into the image — it is mounted at
+# /app/gcp-credentials.json via a Kubernetes secret at deploy time.
 
 # Install dependencies using uv (from pyproject)
 RUN uv pip install --system .

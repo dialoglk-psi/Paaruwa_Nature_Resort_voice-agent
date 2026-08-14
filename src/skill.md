@@ -1,12 +1,12 @@
-# FuelPass Support Skill
+# Paaruwa Resort Support Skill
 
 ## Overview
 
-The FuelPass Support Skill is a telephony-based AI assistant designed to help users with Sri Lanka’s National Fuel Pass QR system.
+The Paaruwa Resort Support Skill is a telephony-based AI assistant designed to help guests and callers with Paaruwa Nature Resort services.
 
 It operates via inbound SIP calls using LiveKit and provides automated support in Sinhala and Tamil.
 
-The assistant answers frequently asked questions related to vehicle registration, QR code usage, and common issues using an official knowledge base.
+The assistant answers frequently asked questions related to bookings, resort amenities, and common inquiries using an official knowledge base.
 
 If a question cannot be answered using the knowledge base, the system automatically creates a support ticket via AgentMail.
 
@@ -28,7 +28,7 @@ Language selection is performed using DTMF input during the call:
 
 The assistant can:
 
-- Answer Fuel Pass FAQ questions
+- Answer Paaruwa Resort FAQ questions
 - Guide users on vehicle registration issues
 - Explain QR code usage
 - Provide troubleshooting steps for common errors
@@ -41,7 +41,7 @@ The assistant can:
 
 ## Knowledge Source
 
-Responses are generated strictly from an internal Fuel Pass FAQ knowledge base derived from official guidance.
+Responses are generated strictly from an internal Paaruwa Resort FAQ knowledge base derived from official guidance.
 
 The assistant MUST NOT provide information outside this knowledge base.
 
@@ -51,7 +51,7 @@ The assistant MUST NOT provide information outside this knowledge base.
 
 ### AgentMail Ticketing Tool
 
-Used when the assistant cannot answer a Fuel Pass–related question with certainty.
+Used when the assistant cannot answer a Paaruwa Resort–related question with certainty.
 
 #### Purpose
 
@@ -59,7 +59,7 @@ Create a complaint/support ticket for follow-up by a human support team.
 
 #### Trigger Condition
 
-- The question is Fuel Pass–related
+- The question is Paaruwa Resort–related
 - The answer is not present in the knowledge base
 - The assistant is not fully confident
 
@@ -104,7 +104,7 @@ The assistant must:
 
 The assistant cannot:
 
-- Access real-time Fuel Pass databases
+- Access real-time Paaruwa Resort databases
 - Modify vehicle registrations
 - Check fuel quota balances
 - Process payments
@@ -161,7 +161,7 @@ To run the agent, the following environment variables are required:
 
 ## Intended Use
 
-This skill is designed for automated customer support for the Fuel Pass system through voice calls.
+This skill is designed for automated customer support for the Paaruwa Nature Resort through voice calls.
 
 It is suitable for deployment in IVR systems and government service hotlines.
 
@@ -172,7 +172,7 @@ It is suitable for deployment in IVR systems and government service hotlines.
 Potential improvements may include:
 
 - Additional languages
-- Integration with official Fuel Pass APIs
+- Integration with official Paaruwa Resort APIs
 - Real-time quota checks
 - SMS notifications
 - Expanded knowledge base

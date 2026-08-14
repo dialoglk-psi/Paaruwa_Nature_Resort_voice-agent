@@ -1,5 +1,5 @@
 def main():
-    print("Hello from fuelpassagent!")
+    print("Hello from paaruwa-resort-agent!")
 
 
 if __name__ == "__main__":

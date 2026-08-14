@@ -1,23 +1,23 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fuel-pass-agent
+  name: paaruwa-resort-agent
 spec:
   selector:
     matchLabels:
-      app: fuel-pass-agent
+      app: paaruwa-resort-agent
   template:
     metadata:
       labels:
-        app: fuel-pass-agent
+        app: paaruwa-resort-agent
     spec:
       containers:
       - name: agent
         # IMPORTANT: Replace YOUR_PROJECT_ID here!
-        image: asia-southeast1-docker.pkg.dev/ict-gaistudio-prod-01/ai-voice-agent-repo/fuel-pass-agent:v2
+        image: asia-southeast1-docker.pkg.dev/ict-gaistudio-prod-01/ai-voice-agent-repo/paaruwa-resort-agent:v2
         envFrom:
         - secretRef:
-            name: fuel-pass-agent-secrets
+            name: paaruwa-resort-agent-secrets
         resources:
           requests:
             cpu: "4"     
@@ -29,12 +29,12 @@ spec:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: fuel-pass-agent-scaler
+  name: paaruwa-resort-agent-scaler
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: fuel-pass-agent
+    name: paaruwa-resort-agent
   minReplicas: 1
   maxReplicas: 2
   metrics:
