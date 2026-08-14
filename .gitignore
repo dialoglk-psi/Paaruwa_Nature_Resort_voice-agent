@@ -11,3 +11,10 @@ wheels/
 
 # Secrets
 src/gcp-credentials.json
+gcp-credentials.json
+gcp-credentials-secret.yaml
+secret-template.yaml
+.env
+.env.*
+*.pem
+*.key
