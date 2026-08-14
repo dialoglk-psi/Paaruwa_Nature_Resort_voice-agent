@@ -12,7 +12,7 @@ on:
 env:
   REGISTRY: psi-nprod-registry.tencentcloudcr.com
   NAMESPACE: paaruwa-agent
-  REPOSITORY: Paaruwa_Nature_Resort_voice-agent
+  REPOSITORY: paaruwa-nature-resort-voice-agent
   DEPLOYMENT_NAME: paaruwa-agent-deployment
   CPU_REQUEST: "1000m"
   CPU_LIMIT: "2000m"
